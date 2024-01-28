@@ -7,6 +7,7 @@ from starlette.background import BackgroundTasks
 
 import uvicorn
 import asyncio
+import os
 
 from typing import TypeVar, Dict, Set
 
@@ -117,17 +118,28 @@ class PyX(Starlette):
 
         @self.route('/')
         async def homepage(request):
-            return HTMLResponse(open('./public/index.html').read())
-
-        @self.route('/{filename:path}')
-        async def static(request):
-            return FileResponse(f'./public/{request.path_params["filename"]}')
+            # If ./public/index.html exists, serve it
+            # Otherwise, serve the default index.html
+            if os.path.exists('./public/index.html'):
+                return HTMLResponse(open('./public/index.html').read())
+            else:
+                module_dir = os.path.dirname(os.path.realpath(__file__))
+                return HTMLResponse(open(f'{module_dir}/assets/index.html').read())
+        
+        @self.route('/pyx2.js')
+        async def pyx2js(request):
+            module_dir = os.path.dirname(os.path.realpath(__file__))
+            return FileResponse(f'{module_dir}/assets/pyx2.js')
 
         self.add_websocket_route('/ws', PyXWebSocketEndpoint)
 
     async def __call__(self, scope, receive, send):
         current.app = self
+        self.initialize_public_directory()
         await super().__call__(scope, receive, send)
+
+    def initialize_public_directory(self):
+        pass
 
     def rerender(self, element: object):
         for client in self.clients:
