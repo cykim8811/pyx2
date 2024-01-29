@@ -3,18 +3,37 @@ from starlette.applications import Starlette
 from starlette.responses import HTMLResponse, FileResponse
 from starlette.endpoints import WebSocketEndpoint
 from starlette.websockets import WebSocket
-from starlette.background import BackgroundTasks
 
-import uvicorn
 import asyncio
 import os
+import random
 
-from typing import TypeVar, Dict, Set
+from typing import Dict, Set
 
-from .resource import RenderableResource, ReferenceGraph, ResourceManager, Hash, hashResource
-from .element import PyXElement
+from .resource import RenderableResource, ReferenceGraph, ResourceManager, Hash, hashResource, Resource
 
 from .context import current
+
+class RequestManager:
+    def __init__(self, websocket: WebSocket):
+        self.websocket = websocket
+        self.requests: Dict[int, asyncio.Future] = {}
+    
+    def request(self, data):
+        request_id = random.randint(0, 2**32).to_bytes(4, 'big').hex()
+        loop = asyncio.get_event_loop()
+        loop.create_task(self.websocket.send_json({'event': 'request', 'data': {'id': request_id, 'data': data}}))
+        future = asyncio.Future()
+        self.requests[request_id] = future
+        return future
+    
+    def response(self, data):
+        request_id = data['id']
+        if request_id in self.requests:
+            self.requests[request_id].set_result(data['data'])
+            del self.requests[request_id]
+        else:
+            raise Exception("Cannot respond to non-existent request")
 
 class Client:
     def __init__(self, websocket: WebSocket, root: RenderableResource, resourceManager: ResourceManager):
@@ -22,7 +41,11 @@ class Client:
         self.root: RenderableResource = root
         self.referenceGraph: ReferenceGraph[Hash] = ReferenceGraph(root.hash)
         self.resourceManager: ResourceManager = resourceManager
+        self.requestManager: RequestManager = RequestManager(websocket)
     
+    def request(self, data):
+        return self.requestManager.request(data)
+
     def rerender(self, element: object):
         current.user = self
         current.request = None
@@ -95,17 +118,19 @@ class PyXWebSocketEndpoint(WebSocketEndpoint):
         self.client.rerender(self.application.component)
 
     async def on_receive(self, websocket, data):
-        if data['event'] == 'call':
+        if data['event'] == 'resource_event':
             resource_hash: Hash = data['data']['id']
-
-            if resource_hash not in self.application.resource_manager.resources:
+            if resource_hash not in self.client.referenceGraph.nodes:
+                # Resource should be in referenceGraph to be accessible (for security reasons)
                 raise Exception("Cannot call non-existent resource")
-
-            resource = self.application.resource_manager.resources[resource_hash].data
-            resource()
             
+            resource: Resource = self.application.resource_manager.resources[resource_hash]
+            resource.event(data['data']['data'], self.client)
+        elif data['event'] == 'response':
+            self.client.requestManager.response(data['data'])
+
+
     async def on_disconnect(self, websocket, close_code):
-        print("Closing websocket")
         self.application.clients.remove(self.client)
 
 

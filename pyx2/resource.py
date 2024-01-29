@@ -1,8 +1,12 @@
 
 import hashlib
+import inspect
+import asyncio
+import json
 from typing import Dict, Set, TypeVar
 
 from .element import PyXElement
+from .utils import static_vars
 
 
 # Define types
@@ -16,6 +20,9 @@ class Resource:
         self.data = data
         self.refCount = 0
         self.hash = hashResource(data)
+    
+    def event(self, data, client):
+        pass
 
 T = TypeVar('T')
 class ReferenceGraph:
@@ -94,8 +101,109 @@ class ReferenceGraph:
 class RenderableResource(Resource):
     pass
 
+
+class FunctionPreloader:
+    def __init__(self):
+        self.preload_map = {}
+    
+    def use_attr(self, preload_key: str, path: list):
+        if preload_key not in self.preload_map:
+            self.preload_map[preload_key] = dict()
+        current = self.preload_map[preload_key]
+        for key in path[:-1]:
+            key = json.dumps(key)
+            if key not in current:
+                current[key] = {}
+            current = current[key]
+        current[json.dumps(path[-1])] = None
+    
+    def get(self, preload_key: str):
+        return self.preload_map[preload_key] if preload_key in self.preload_map else {}
+
+
+class FunctionArgument:
+    def __init__(self, path: list, call_id: str, client, data, preloader: FunctionPreloader, preload_key: str, parent=None):
+        self._path = path
+        self._call_id = call_id
+        self._client = client
+        self._preloader = preloader
+        self._preload_key = preload_key
+        self._data = data
+        self._parent = parent
+    
+    def __getitem__(self, key):
+        stringified_key = json.dumps(key)
+        return FunctionArgument(self._path + [key], self._client, self._data[stringified_key] if stringified_key in self._data else None, self._preloader, self._preload_key, self)
+    
+    def __getattribute__(self, name):
+        if name in ['_path', '_call_id', '_client', '_preloader', '_preload_key', '_data', '_parent', 'set_data']:
+            return super().__getattribute__(name)
+        stringified_key = json.dumps(name)
+        return FunctionArgument(self._path + [name], self._call_id, self._client, self._data[stringified_key] if stringified_key in self._data else None, self._preloader, self._preload_key, self)
+
+    def set_data(self, key, data):
+        stringified_key = json.dumps(key)
+        self._data[stringified_key] = data
+        if self._parent is not None:
+            self._parent.set_data(self._path[-1], self._data)
+
+    def __await__(self):
+        async def ftn():
+            self._preloader.use_attr(self._preload_key, self._path)
+            if self._data is not None:
+                return self._data
+            res = await self._client.request({'event': 'get_function_argument', 'data': {'path': self._path, 'call_id': self._call_id}})
+            self._data = res
+            self._parent.set_data(self._path[-1], res)
+            return res
+        return ftn().__await__()
+
+
 class FunctionResource(Resource):
-    pass
+    preloader = FunctionPreloader()
+    def event(self, data, client):
+        if data['event'] == 'call':
+            arg_count: list = data['data']['arg_count']
+            call_id: str = data['data']['call_id']
+            preloaded_data: dict = data['data']['preloaded_data'] if 'preloaded_data' in data['data'] else {}
+
+            # Check if number of arguments is valid
+            # TODO: Add support for keyword arguments or variable arguments
+            arg_min = None
+            arg_max = None
+            if not callable(self.data):
+                raise Exception("Cannot call non-callable resource")
+            if inspect.ismethod(self.data):
+                arg_max = self.data.__code__.co_argcount - 1 # Subtract 1 for self
+                arg_min = arg_max - len(self.data.__defaults__) if self.data.__defaults__ is not None else arg_max
+            elif inspect.isfunction(self.data):
+                arg_max = self.data.__code__.co_argcount
+                arg_min = arg_max - len(self.data.__defaults__) if self.data.__defaults__ is not None else arg_max
+            else:   # An object with __call__ method
+                arg_max = self.data.__call__.__code__.co_argcount - 1 # Subtract 1 for self
+                arg_min = arg_max - len(self.data.__call__.__defaults__) if self.data.__call__.__defaults__ is not None else arg_max
+
+            assert arg_count >= arg_min, f"Number of arguments must be at least {arg_min}"
+
+            # Create arguments
+            args = [
+                FunctionArgument([i], call_id, client, preloaded_data[json.dumps(i)] if json.dumps(i) in preloaded_data else {}, self.preloader, self.data.__qualname__)
+                for i in range(min(arg_count, arg_max))
+            ]
+
+            # Call function - TODO: Just call the function and if it returns a coroutine, create a task
+            if inspect.iscoroutinefunction(self.data):
+                async def ftn_call():
+                    result = await self.data(*args)
+                    await client.websocket.send_json({'event': 'function_return', 'data': {'call_id': call_id, 'return': result}})
+                asyncio.create_task(ftn_call())
+            else:
+                result = self.data(*args)
+                loop = asyncio.get_event_loop()
+                loop.create_task(client.websocket.send_json({'event': 'function_return', 'data': {'call_id': call_id, 'return': result}}))
+
+    def get_preload_args(self):
+        return self.preloader.get(self.data.__qualname__)
 
 class ImageResource(Resource):
     pass
@@ -181,6 +289,7 @@ class ResourceManager:
             return {
                 '__type__': 'Function',
                 'id': hashResource(element),
+                'preload_args': self.resources[resource_hash].get_preload_args(),
             }
         else:
             raise Exception(f"Cannot serialize unknown element type {type(element)}")
