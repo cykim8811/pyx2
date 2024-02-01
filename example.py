@@ -29,12 +29,18 @@ class MyComponent:
         for i in range(self.count):
             elems.append(createElement('li', {}, f'Item {i}'))
         
+        async def onUsernameInput(e):
+            self.
+        
         return createElement('div', {}, [
             self.display,
             str(current.user),
             createElement('h1', {}, 'Count:', self.count),
             createElement('button', {'onClick': self.onClick}, 'Click me!'),
-            createElement('ul', {}, elems),
+            createElement('div', {}, 
+                createElement('input', {'type': 'text',
+                createElement('input', {'type': 'password'}),
+            ),
         ])
 
 component = MyComponent()

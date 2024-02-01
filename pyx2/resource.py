@@ -67,7 +67,9 @@ class ReferenceGraph:
         if node not in self.nodes:
             raise Exception("Cannot delete non-existent node")
         for ref in self.nodes[node]:
-            self.deleteEdge(node, ref)
+            self.referenceCount[ref] -= 1
+            if self.referenceCount[ref]== 0:
+                self.deleteNode(ref)
         del self.nodes[node]
         del self.referenceCount[node]
     
@@ -133,16 +135,18 @@ class FunctionArgument:
     
     def __getitem__(self, key):
         stringified_key = json.dumps(key)
-        return FunctionArgument(self._path + [key], self._client, self._data[stringified_key] if stringified_key in self._data else None, self._preloader, self._preload_key, self)
+        return FunctionArgument(self._path + [key], self._client, self._data[stringified_key] if (self._data is not None and stringified_key in self._data) else None, self._preloader, self._preload_key, self)
     
     def __getattribute__(self, name):
         if name in ['_path', '_call_id', '_client', '_preloader', '_preload_key', '_data', '_parent', 'set_data']:
             return super().__getattribute__(name)
         stringified_key = json.dumps(name)
-        return FunctionArgument(self._path + [name], self._call_id, self._client, self._data[stringified_key] if stringified_key in self._data else None, self._preloader, self._preload_key, self)
+        return FunctionArgument(self._path + [name], self._call_id, self._client, self._data[stringified_key] if (self._data is not None and stringified_key in self._data) else None, self._preloader, self._preload_key, self)
 
     def set_data(self, key, data):
         stringified_key = json.dumps(key)
+        if self._data is None:
+            self._data = {}
         self._data[stringified_key] = data
         if self._parent is not None:
             self._parent.set_data(self._path[-1], self._data)

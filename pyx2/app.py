@@ -42,6 +42,7 @@ class Client:
         self.referenceGraph: ReferenceGraph[Hash] = ReferenceGraph(root.hash)
         self.resourceManager: ResourceManager = resourceManager
         self.requestManager: RequestManager = RequestManager(websocket)
+        self.data: Dict[str, object] = {}
     
     def request(self, data):
         return self.requestManager.request(data)
@@ -111,6 +112,9 @@ class PyXWebSocketEndpoint(WebSocketEndpoint):
         self.client = Client(websocket, self.application.resource_manager.root, self.application.resource_manager)
         self.application.clients.add(self.client)
 
+        current.user = self.client
+        self.application.onConnect()
+
         # Send root resource hash
         await websocket.send_json({'event': 'root', 'data': self.client.root.hash})
 
@@ -118,19 +122,27 @@ class PyXWebSocketEndpoint(WebSocketEndpoint):
         self.client.rerender(self.application.component)
 
     async def on_receive(self, websocket, data):
-        if data['event'] == 'resource_event':
-            resource_hash: Hash = data['data']['id']
-            if resource_hash not in self.client.referenceGraph.nodes:
-                # Resource should be in referenceGraph to be accessible (for security reasons)
-                raise Exception("Cannot call non-existent resource")
-            
-            resource: Resource = self.application.resource_manager.resources[resource_hash]
-            resource.event(data['data']['data'], self.client)
-        elif data['event'] == 'response':
-            self.client.requestManager.response(data['data'])
+        try:
+            if data['event'] == 'resource_event':
+                resource_hash: Hash = data['data']['id']
+                if resource_hash not in self.client.referenceGraph.nodes:
+                    # Resource should be in referenceGraph to be accessible (for security reasons)
+                    raise Exception("Cannot call non-existent resource")
+                
+                resource: Resource = self.application.resource_manager.resources[resource_hash]
+                resource.event(data['data']['data'], self.client)
+            elif data['event'] == 'response':
+                self.client.requestManager.response(data['data'])
+            else:
+                raise Exception("Invalid event")
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
 
 
     async def on_disconnect(self, websocket, close_code):
+        current.user = self.client
+        self.application.onDisconnect()
         self.application.clients.remove(self.client)
 
 
@@ -170,4 +182,10 @@ class PyX(Starlette):
         for client in self.clients:
             if client.referenceGraph.hasNode(hashResource(element)):
                 client.rerender(element)
+
+    def onConnect(self):
+        pass
+
+    def onDisconnect(self):
+        pass
 

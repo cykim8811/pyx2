@@ -105,7 +105,7 @@ export class PyXClient {
                     const tag = obj["tag"];
                     const props = this.convert(obj["props"]);
                     const children = this.convert(obj["children"]);
-                    return React.createElement(tag, props, children);
+                    return React.createElement(tag, props, ...children);
                 } else if (resourceType === "Function") {
                     const id = obj["id"];
                     const preload_args = obj["preload_args"];
