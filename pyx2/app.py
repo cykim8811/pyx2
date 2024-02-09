@@ -1,11 +1,12 @@
 
 from starlette.applications import Starlette
-from starlette.responses import HTMLResponse, FileResponse
+from starlette.responses import HTMLResponse, FileResponse, Response
 from starlette.endpoints import WebSocketEndpoint
 from starlette.websockets import WebSocket
 
 import asyncio
 import os
+import io
 import random
 
 from typing import Dict, Set
@@ -167,6 +168,22 @@ class PyX(Starlette):
         async def pyx2js(request):
             module_dir = os.path.dirname(os.path.realpath(__file__))
             return FileResponse(f'{module_dir}/assets/pyx2.js')
+        
+        @self.route('/images/{filename}')
+        async def images(request):
+            # filename: RESOURCE_HASH.png
+            filename = request.path_params['filename']
+            resource_hash = filename.split('.')[0]
+            if resource_hash in self.resource_manager.resources:
+                pil_img = self.resource_manager.resources[resource_hash].data
+                # Do not save the image to disk, serve it directly.
+                # Change PIL.Image to png bytes
+                img_bytes = io.BytesIO()
+                pil_img.save(img_bytes, format='PNG')
+                img_bytes = img_bytes.getvalue()
+                return Response(content=img_bytes, media_type="image/png")
+            else:
+                return HTMLResponse("Image not found", status_code=404)
 
         self.add_websocket_route('/ws', PyXWebSocketEndpoint)
 

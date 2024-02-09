@@ -4,6 +4,7 @@ import inspect
 import asyncio
 import json
 from typing import Dict, Set, TypeVar
+from PIL import Image
 
 from .element import PyXElement
 from .utils import static_vars
@@ -295,6 +296,16 @@ class ResourceManager:
                 'id': hashResource(element),
                 'preload_args': self.resources[resource_hash].get_preload_args(),
             }
+        elif isinstance(element, Image.Image):
+            resource_hash = hashResource(element)
+            resource = None
+            if resource_hash not in self.resources:
+                resource = ImageResource(element)
+                self.registerResource(resource)
+            else:
+                resource = self.resources[resource_hash]
+            self._references.append(resource)
+            return f"images/{resource_hash}.png"
         else:
             raise Exception(f"Cannot serialize unknown element type {type(element)}")
 

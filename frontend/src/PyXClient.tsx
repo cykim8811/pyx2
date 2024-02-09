@@ -34,7 +34,7 @@ export class PyXClient {
     resources: {[key: string]: object};
     functionArguments: {[key: string]: any};    // Stores the arguments for functions.
     constructor() {
-        this.websocket = new WebSocket("ws://" + window.location.host + "/ws");
+        this.websocket = new WebSocket("wss://" + window.location.host + "/ws");
         this.setters = new Map();
         this.rootIdSetter = null;
         this.useRenderable = useRenderable.bind(this);

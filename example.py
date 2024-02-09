@@ -11,6 +11,10 @@ class Display:
         return createElement('div', {}, self.text)
 
 
+from PIL import Image
+ssuk = Image.open('ssuk.webp')
+
+
 class MyComponent:
     def __init__(self):
         self.count = 3
@@ -29,18 +33,12 @@ class MyComponent:
         for i in range(self.count):
             elems.append(createElement('li', {}, f'Item {i}'))
         
-        async def onUsernameInput(e):
-            self.
-        
         return createElement('div', {}, [
             self.display,
             str(current.user),
             createElement('h1', {}, 'Count:', self.count),
             createElement('button', {'onClick': self.onClick}, 'Click me!'),
-            createElement('div', {}, 
-                createElement('input', {'type': 'text',
-                createElement('input', {'type': 'password'}),
-            ),
+            createElement('img', {'src': ssuk}),
         ])
 
 component = MyComponent()
