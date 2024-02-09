@@ -1,0 +1,14 @@
+setup.py
+src/pyx2/__init__.py
+src/pyx2/app.py
+src/pyx2/context.py
+src/pyx2/element.py
+src/pyx2/resource.py
+src/pyx2/utils.py
+src/pyx2.egg-info/PKG-INFO
+src/pyx2.egg-info/SOURCES.txt
+src/pyx2.egg-info/dependency_links.txt
+src/pyx2.egg-info/top_level.txt
+src/pyx2/assets/index.html
+src/pyx2/assets/pyx2.js
+src/pyx2/assets/pyx_icon.svg
