@@ -8,6 +8,7 @@ from PIL import Image
 
 from .element import PyXElement
 from .utils import static_vars
+from .context import current
 
 
 # Define types
@@ -21,6 +22,7 @@ class Resource:
         self.data = data
         self.refCount = 0
         self.hash = hashResource(data)
+        self.dependencies = set()
     
     def event(self, data, client):
         pass
@@ -220,6 +222,7 @@ class TextResource(Resource):
 class ResourceManager:
     def __init__(self, root: object):
         self.root = RenderableResource(root)
+
         self.resources = {
             hashResource(root): self.root
         }
@@ -227,9 +230,31 @@ class ResourceManager:
         
         self._references = []   # Temporary variable for serialization
 
+        self.originalSetattrs = {}
+        self.registerSetattr(self.root)
+
+    def stateUpdated(self, resource_hash: Hash, attr: str):
+        if resource_hash not in self.resources:
+            raise Exception("Cannot update state of non-existent resource")
+        if attr in self.resources[resource_hash].dependencies:
+            current.app.rerender(self.resources[resource_hash].data)
+
+    def registerSetattr(self, resource: object):
+        if resource.data.__class__ not in self.originalSetattrs:
+            try:
+                self.originalSetattrs[resource.data.__class__] = resource.data.__class__.__setattr__
+                outer_self = self
+                def new_setattr(self, name, value):
+                    outer_self.originalSetattrs[self.__class__](self, name, value)
+                    outer_self.stateUpdated(resource.hash, name)
+                resource.data.__class__.__setattr__ = new_setattr
+            except Exception as e:
+                pass
+
     def registerResource(self, resource: object):
         if resource.hash in self.resources:
             raise Exception("Cannot register existing resource")
+        self.registerSetattr(resource)
         self.resources[resource.hash] = resource
 
     def incRefCount(self, resource_hash: Hash):
@@ -243,6 +268,13 @@ class ResourceManager:
         self.resources[resource_hash].refCount -= 1
         if self.resources[resource_hash].refCount == 0:
             del self.resources[resource_hash]
+    
+    def addDependencies(self, resource_hash: Hash, dependencies: Set[Hash]):
+        if resource_hash not in self.resources:
+            raise Exception("Cannot add dependencies to non-existent resource")
+        if not isinstance(self.resources[resource_hash], RenderableResource):
+            raise Exception("Cannot add dependencies to non-renderable resource")
+        self.resources[resource_hash].dependencies = dependencies | self.resources[resource_hash].dependencies
 
     def serializeElement(self, element: PyXElement):
         self._references = []

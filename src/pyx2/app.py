@@ -65,9 +65,15 @@ class Client:
         
         target_resource: RenderableResource = self.resourceManager.resources[resource_hash]
 
-        # TODO: Set context
-        # TODO: Get Dependencies
+        dependencies = set()
+        original_getattr = target_resource.data.__class__.__getattribute__
+        def new_getattr(self, name):
+            dependencies.add(name)
+            return original_getattr(self, name)
+        target_resource.data.__class__.__getattribute__ = new_getattr
         result = target_resource.data.__render__()
+        target_resource.data.__class__.__getattribute__ = original_getattr
+        self.resourceManager.addDependencies(resource_hash, dependencies)
 
         # TODO: Update dependencies
 
@@ -121,6 +127,17 @@ class PyXWebSocketEndpoint(WebSocketEndpoint):
 
         # Send initial render
         self.client.rerender(self.application.component)
+
+        # Start heartbeat
+        asyncio.create_task(self.heartbeat())
+
+    async def heartbeat(self):
+        while True:
+            await asyncio.sleep(10)
+            try:
+                await self.websocket.send_json({'event': 'heartbeat'})
+            except:
+                break
 
     async def on_receive(self, websocket, data):
         try:
