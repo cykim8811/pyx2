@@ -6,6 +6,13 @@ setup(
     description='A framework that enables Python objects to be easily rendered on a web server',
     author='Kim Changyeon',
     author_email='cykim8811@snu.ac.kr',
+    requires=[
+        'starlette',
+        'websockets',
+        'uvicorn',
+        'pillow',
+        'watchdog',
+    ],
     # url='https://github.com/cykim8811/pyx-react',
     # package_folder: ./pyx2
     packages=find_packages('src'),

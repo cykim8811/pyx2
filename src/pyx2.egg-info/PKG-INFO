@@ -2,7 +2,17 @@ Metadata-Version: 2.1
 Name: pyx2
 Version: 2.0.0
 Summary: A framework that enables Python objects to be easily rendered on a web server
+Home-page: UNKNOWN
 Author: Kim Changyeon
 Author-email: cykim8811@snu.ac.kr
 License: MIT
 Keywords: pyx,react,python,visualization,web,fullstack,realtime
+Platform: UNKNOWN
+Requires: starlette
+Requires: websockets
+Requires: uvicorn
+Requires: pillow
+Requires: watchdog
+
+UNKNOWN
+
